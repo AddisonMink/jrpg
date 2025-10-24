@@ -1,6 +1,8 @@
 pico-8 cartridge // http://www.pico-8.com
 version 42
 __lua__
+#include battle.lua
+
 MESSAGE_DUR = 0.75
 FLASH_DUR = 0.25
 
@@ -117,83 +119,11 @@ state = "start"
 t0 = 0
 
 function _init()
-  for player in all(players) do
-    add(combatants, player)
-  end
-
-  for enemy in all(enemies) do
-    add(combatants, enemy)
-  end
-
-  active = combatants[1]
-  state = "start"
-  t0 = time()
-  message = "enemies appear!"
+  battle = battle_new(players, enemies)
 end
 
 function _update()
-  if state == "start" and time() - t0 > MESSAGE_DUR then
-    state = "player_turn"
-    message = active.name .. "'s turn"
-  elseif state == "player_turn" and btnp(4) then
-    targets = {}
-    for enemy in all(enemies) do
-      if enemy.position <= 3 then
-        add(targets, enemy)
-      end
-    end
-    target_position = 1
-    message = "select target: " .. targets[target_position].name
-    state = "single_target_select"
-  elseif state == "single_target_select" and btnp(2) then
-    target_position = (target_position % #targets) + 1
-    message = "select target: " .. targets[target_position].name
-  elseif state == "single_target_select" and btnp(3) then
-    target_position = target_position - 1
-    if target_position < 1 then
-      target_position = #targets
-    end
-    message = "select target: " .. targets[target_position].name
-  elseif state == "single_target_select" and btnp(4) then
-    local target = targets[target_position]
-    local effect = { type = "attack", attacker = active, target = target }
-    effects = { effect }
-    animations = { animation_flash_new(active) }
-    t0 = 0
-    dur = MESSAGE_DUR
-    state = "exec_effects"
-  elseif state == "single_target_select" and btnp(5) then
-    state = "player_turn"
-    message = active.name .. "'s turn"
-  elseif state == "exec_effects" and time() - t0 > dur and #effects == 0 then
-    state = "end_turn"
-    message = ""
-  elseif state == "exec_effects" and time() - t0 > dur then
-    execute_effect(effects)
-  elseif state == "end_turn" and #enemies == 0 then
-    state = "victory"
-    message = "victory!"
-  elseif state == "end_turn" and #players == 0 then
-    state = "defeat"
-    message = "defeat..."
-  elseif state == "end_turn" then
-    collapse_column(enemies)
-    del(combatants, active)
-    add(combatants, active)
-    active = combatants[1]
-    if active.type == "player" then
-      state = "player_turn"
-      message = active.name .. "'s turn"
-    else
-      effects = active.behavior(active, players, enemies)
-      animations = { animation_flash_new(active) }
-      t0 = time()
-      dur = MESSAGE_DUR
-      state = "exec_effects"
-      message = active.name .. "'s turn"
-    end
-  elseif state == "enemy_turn" then
-  end
+  battle:update()
 end
 
 function execute_effect(effects)
@@ -253,16 +183,7 @@ end
 
 function _draw()
   cls(2)
-  draw_message(message)
-  draw_players(players)
-  draw_enemies(enemies)
-  draw_player_stats(players)
-
-  if state == "player_turn" then
-    draw_menu(active)
-  elseif state == "single_target_select" then
-    draw_enemy_pointer(targets[target_position])
-  end
+  battle:draw()
 end
 
 function draw_message(text)
