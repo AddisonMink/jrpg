@@ -1,7 +1,8 @@
 pico-8 cartridge // http://www.pico-8.com
 version 42
 __lua__
-MESSAGE_DUR = 0.5
+MESSAGE_DUR = 0.75
+FLASH_DUR = 0.25
 
 TARGET_TABLE = {
   melee = {
@@ -18,14 +19,15 @@ TARGET_TABLE = {
   }
 }
 
-function combatant_new(type, name, sprite, position, hp)
+function combatant_new(type, name, sprite, position, hp, strength)
   return {
     type = type,
     name = name,
     sprite = sprite,
     position = position,
     hp_max = hp,
-    hp = hp
+    hp = hp,
+    strength = strength
   }
 end
 
@@ -59,29 +61,29 @@ function combatant_select_player_target(players, distribution)
 end
 
 function warrior_new(name, position)
+  local sprite = 1
   local hp = 10
-
-  return {
-    type = "player",
-    name = name,
-    sprite = 1,
-    position = position,
-    hp_max = hp,
-    hp = hp
-  }
+  local strength = 1
+  return combatant_new("player", name, sprite, position, hp, strength)
 end
 
 function goblin_new(position)
+  local sprite = 2
   local hp = 3
+  local strength = -1
+  local me = combatant_new("enemy", "goblin", sprite, position, hp, strength)
+  me.behavior = goblin_behavior
+  return me
+end
 
-  return {
-    type = "enemy",
-    name = "goblin",
-    sprite = 2,
-    position = position,
-    hp_max = hp,
-    hp = hp
+function goblin_behavior(goblin, players, enemies)
+  local target = combatant_select_player_target(players, "melee")
+
+  local effects = {
+    { type = "attack", attacker = goblin, target = target }
   }
+
+  return effects
 end
 
 player1 = warrior_new("bart", 1)
@@ -154,12 +156,12 @@ function _update()
     message = "select target: " .. targets[target_position].name
   elseif state == "single_target_select" and btnp(4) then
     local target = targets[target_position]
-    local effect = { type = "kill", target = target }
+    local effect = { type = "attack", attacker = active, target = target }
     effects = { effect }
+    animations = { animation_flash_new(active) }
     t0 = 0
     dur = MESSAGE_DUR
     state = "exec_effects"
-    message = "attack " .. target.name .. "!"
   elseif state == "single_target_select" and btnp(5) then
     state = "player_turn"
     message = active.name .. "'s turn"
@@ -167,19 +169,7 @@ function _update()
     state = "end_turn"
     message = ""
   elseif state == "exec_effects" and time() - t0 > dur then
-    local effect = effects[1]
-    del(effects, effect)
-    if effect.type == "kill" then
-      effect.target.hp = 0
-      del(enemies, effect.target)
-      del(players, effect.target)
-      del(combatants, effect.target)
-      message = effect.target.name .. " is defeated!"
-    end
-
-    if #effects == 0 then
-      t0 = time()
-    end
+    execute_effect(effects)
   elseif state == "end_turn" and #enemies == 0 then
     state = "victory"
     message = "victory!"
@@ -195,10 +185,46 @@ function _update()
       state = "player_turn"
       message = active.name .. "'s turn"
     else
-      state = "enemy_turn"
+      effects = active.behavior(active, players, enemies)
+      animations = { animation_flash_new(active) }
+      t0 = time()
+      dur = MESSAGE_DUR
+      state = "exec_effects"
       message = active.name .. "'s turn"
     end
   elseif state == "enemy_turn" then
+  end
+end
+
+function execute_effect(effects)
+  local effect = effects[1]
+  del(effects, effect)
+
+  if effect.type == "attack" then
+    local power = effect.attacker.strength
+    local new_effect = { type = "damage", target = effect.target, power = power }
+    message = effect.attacker.name .. " attacks"
+    t0 = time()
+    dur = MESSAGE_DUR
+    add(effects, new_effect)
+  elseif effect.type == "damage" then
+    local damage = compute_damage(effect.power)
+    effect.target.hp -= damage
+    message = tostring(damage) .. " damage"
+    t0 = time()
+    dur = MESSAGE_DUR
+
+    if effect.target.hp <= 0 then
+      local new_effect = { type = "kill", target = effect.target }
+      add(effects, new_effect)
+    end
+  elseif effect.type == "kill" then
+    del(enemies, effect.target)
+    del(players, effect.target)
+    del(combatants, effect.target)
+    message = effect.target.name .. " is defeated!"
+    t0 = time()
+    dur = MESSAGE_DUR
   end
 end
 
@@ -218,6 +244,11 @@ function collapse_column(enemies)
       enemy.position -= 3
     end
   end
+end
+
+function compute_damage(power)
+  local roll = flr(rnd(4)) + 1
+  return max(1, power + roll)
 end
 
 function _draw()
@@ -318,6 +349,26 @@ function draw_menu(player)
   print("command", x + 8, y, 5)
   y += 8
   print("item", x + 8, y, 5)
+end
+
+function draw_sprite(sprite, x, y, tint)
+  if tint then
+    for i = 0, 15 do
+      pal(i, tint)
+    end
+  end
+  spr(sprite, x, y)
+  pal()
+end
+
+function animation_flash_new(target)
+  return {
+    type = "flash",
+    target = target,
+    color = 7,
+    dur = FLASH_DUR,
+    t0 = time()
+  }
 end
 
 __gfx__
