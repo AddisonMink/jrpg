@@ -79,6 +79,7 @@ function battle_new(players, enemies)
       local damage = compute_damage(effect.power)
 
       effect.target.hp -= damage
+      effect.target.sleep = false
       message = tostring(damage) .. " damage"
       state.t0 = time()
       state.dur = 0
@@ -116,6 +117,34 @@ function battle_new(players, enemies)
       state.t0 = time()
       state.animation = { type = "overlay", target = effect.target, animation = effect.animation }
       state.dur = effect.animation.dur
+    elseif effect.type == "set_sleep" then
+      if effect.target.undead then
+        message = effect.target.name .. " is immune"
+        state.t0 = time()
+        state.dur = MESSAGE_DUR
+      else
+        effect.target.sleep = true
+        message = effect.target.name .. " fell asleep"
+        state.t0 = time()
+        state.dur = MESSAGE_DUR
+      end
+    elseif effect.type == "banish" then
+      if effect.target.undead then
+        local new_effect = { type = "damage", target = effect.target, power = effect.power }
+        add(state.effects, new_effect, 1)
+      else
+        message = effect.target.name .. " is immune"
+        state.t0 = time()
+        state.dur = MESSAGE_DUR
+      end
+    elseif effect.type == "heal" then
+      local power = compute_damage(effect.power)
+      local diff = effect.target.hp_max - effect.target.hp
+      power = min(power, diff)
+      effect.target.hp += power
+      message = "recovered " .. tostring(power) .. " hp"
+      state.t0 = time()
+      state.dur = MESSAGE_DUR
     end
   end
 
@@ -156,8 +185,14 @@ function battle_new(players, enemies)
     rect(ox, oy, ox + w, oy + h, 7)
 
     for player in all(players) do
-      local turn = (state.type == "player_turn" or state.type == "select_menu_option")
+      local turn = (state.type == "player_turn"
+            or state.type == "select_target"
+            or state.type == "select_menu_option"
+            or state.type == "select_all_enemies")
           and state.player == player
+
+      local selected = state.type == "select_target"
+          and state.targets[state.index] == player
 
       local x = turn and player_x or player_x + 8
       local y = player_y + (player.position - 1) * 10
@@ -165,6 +200,10 @@ function battle_new(players, enemies)
       local anim = state.animation
           and state.animation.target == player
           and state.animation
+
+      local overlay = anim
+          and anim.type == "overlay"
+          and anim.animation
 
       local tint = anim
           and anim.type == "flash"
@@ -177,6 +216,17 @@ function battle_new(players, enemies)
       end
       spr(player.sprite, x, y)
       pal()
+
+      if overlay then
+        local frame_count = #overlay.frames
+        local frame_index = flr((time() - state.t0) * overlay.fps) % frame_count + 1
+        local frame = overlay.frames[frame_index]
+        spr(frame, x, y)
+      end
+
+      if selected then
+        spr(16, x - 8, y + 2)
+      end
     end
   end
 
@@ -203,6 +253,7 @@ function battle_new(players, enemies)
 
       local selected = state.type == "select_target"
           and state.targets[state.index] == enemy
+          or state.type == "select_all_enemies"
 
       local row = (9 - enemy.position) % 3 + 1
       local col = flr((9 - enemy.position) / 3) + 1
@@ -226,6 +277,10 @@ function battle_new(players, enemies)
         local frame_index = flr((time() - state.t0) * overlay.fps) % frame_count + 1
         local frame = overlay.frames[frame_index]
         spr(frame, x, y)
+      end
+
+      if enemy.sleep then
+        spr(23, x + 8, y - 4)
       end
     end
   end
@@ -367,17 +422,25 @@ function battle_new(players, enemies)
         if uses > 0 then
           local effects = spell.effects(state.player)
 
-          local targets = spell.range == "melee" and find_melee_targets(enemies)
-              or spell.range == "single" and find_single_targets(enemies)
+          if spell.range == "all_enemies" then
+            state = {
+              type = "select_all_enemies",
+              player = state.player,
+              effects = effects
+            }
+          else
+            local targets = spell.range == "melee" and find_melee_targets(enemies)
+                or spell.range == "single" and find_single_targets(enemies)
+                or spell.range == "single_ally" and players
 
-          message = "select target"
-          state = {
-            type = "select_target",
-            player = state.player,
-            effects = effects,
-            targets = targets,
-            index = 1
-          }
+            state = {
+              type = "select_target",
+              player = state.player,
+              effects = effects,
+              targets = targets,
+              index = 1
+            }
+          end
         end
       elseif btnp(5) then
         message = state.player.name .. "'s turn"
@@ -414,6 +477,43 @@ function battle_new(players, enemies)
       return
     end
 
+    if state.type == "select_all_enemies" then
+      if btnp(4) then
+        local targeted_effects = {}
+        local effects_to_target = {}
+        for effect in all(state.effects) do
+          if effect.target == nil then
+            add(effects_to_target, effect)
+          else
+            add(targeted_effects, effect)
+          end
+        end
+
+        for enemy in all(enemies) do
+          for effect in all(effects_to_target) do
+            local new_effect = {}
+            for k, v in pairs(effect) do
+              new_effect[k] = v
+            end
+            new_effect.target = enemy
+            add(targeted_effects, new_effect)
+          end
+        end
+
+        state = {
+          active = state.player,
+          type = "exec_effects",
+          effects = targeted_effects,
+          t0 = 0,
+          dur = MESSAGE_DUR
+        }
+      elseif btnp(5) then
+        message = state.player.name .. "'s turn"
+        state = { type = "player_turn", player = state.player, index = 1 }
+      end
+      return
+    end
+
     if state.type == "enemy_turn" then
       local target = enemy_find_target(players, "melee")
       local effect1 = { type = "flash", target = state.enemy, color = 7 }
@@ -435,7 +535,7 @@ function battle_new(players, enemies)
       local done = #state.effects == 0
 
       if time_up and done then
-        state = { type = "end_turn", active = state.active }
+        state = { type = "end_turn", active = state.active, t0 = 0, dur = MESSAGE_DUR }
       elseif time_up then
         state.animation = nil
         execute_effect(state)
@@ -444,6 +544,10 @@ function battle_new(players, enemies)
     end
 
     if state.type == "end_turn" then
+      if time() - state.t0 < state.dur then
+        return
+      end
+
       local active = combatants[1]
       local type = active and active.type
 
@@ -457,6 +561,9 @@ function battle_new(players, enemies)
       elseif #enemies == 0 then
         message = "victory!"
         state = { type = "win" }
+      elseif active.sleep then
+        message = active.name .. " is asleep"
+        state = { type = "end_turn", active = active, t0 = time(), dur = MESSAGE_DUR }
       elseif type == "player" then
         message = active.name .. "'s turn"
         state = { type = "player_turn", player = active, index = 1 }
