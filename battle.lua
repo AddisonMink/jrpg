@@ -36,6 +36,10 @@ function battle_new(players, enemies)
     return targets
   end
 
+  local function find_single_targets(enemies)
+    return enemies
+  end
+
   local function enemy_find_target(players, distribution)
     distribution = distribution or "uniform"
     local table = ENEMY_TARGET_TABLE[distribution][#players]
@@ -97,6 +101,21 @@ function battle_new(players, enemies)
       state.t0 = time()
       state.dur = FLASH_DUR
       state.animation = { type = "flash", target = effect.target, color = effect.color }
+    elseif effect.type == "use_spell" then
+      local valid = effect.target.spell_uses
+          and effect.target.spell_uses[effect.level]
+
+      if valid then
+        local uses = effect.target.spell_uses[effect.level]
+        effect.target.spell_uses[effect.level] = max(0, uses - 1)
+        message = effect.target.name .. " casts " .. effect.name
+        state.t0 = time()
+        state.dur = MESSAGE_DUR
+      end
+    elseif effect.type == "overlay" then
+      state.t0 = time()
+      state.animation = { type = "overlay", target = effect.target, animation = effect.animation }
+      state.dur = effect.animation.dur
     end
   end
 
@@ -137,7 +156,9 @@ function battle_new(players, enemies)
     rect(ox, oy, ox + w, oy + h, 7)
 
     for player in all(players) do
-      local turn = state.type == "player_turn" and state.player == player
+      local turn = (state.type == "player_turn" or state.type == "select_menu_option")
+          and state.player == player
+
       local x = turn and player_x or player_x + 8
       local y = player_y + (player.position - 1) * 10
 
@@ -176,6 +197,10 @@ function battle_new(players, enemies)
           and anim.type == "flash"
           and anim.color
 
+      local overlay = anim
+          and anim.type == "overlay"
+          and anim.animation
+
       local selected = state.type == "select_target"
           and state.targets[state.index] == enemy
 
@@ -194,6 +219,13 @@ function battle_new(players, enemies)
 
       if selected then
         spr(16, x - 8, y + 2)
+      end
+
+      if overlay then
+        local frame_count = #overlay.frames
+        local frame_index = flr((time() - state.t0) * overlay.fps) % frame_count + 1
+        local frame = overlay.frames[frame_index]
+        spr(frame, x, y)
       end
     end
   end
@@ -215,22 +247,47 @@ function battle_new(players, enemies)
     end
   end
 
-  local function draw_menu(player)
+  local function draw_menu(player, index)
     local ox, oy = 8, 36
     local w, h = 60, 40
     local x, y = ox + 4, oy + 4
+    local pointer_y = y + 10 + (index - 1) * 8
 
     rectfill(ox, oy, ox + w, oy + h, 0)
     rect(ox, oy, ox + w, oy + h, 7)
 
     print(player.name, x, y, 7)
     y += 10
-    spr(16, x, y)
     print("attack", x + 8, y, 7)
     y += 8
-    print("command", x + 8, y, 5)
+    print(player.command.name, x + 8, y, 7)
     y += 8
     print("item", x + 8, y, 5)
+
+    spr(16, x, pointer_y)
+  end
+
+  local function draw_spell_menu(state)
+    local ox, oy = 8, 36
+    local w, h = 60, 40
+    local x, y = ox + 4, oy + 4
+    local pointer_y = y + 10 + (state.index - 1) * 8
+
+    rectfill(ox, oy, ox + w, oy + h, 0)
+    rect(ox, oy, ox + w, oy + h, 7)
+
+    print(state.name, x, y, 7)
+    y += 10
+    for spell in all(state.spells) do
+      local name = spell.name
+      local level = spell.level
+      local uses = state.player.spell_uses[level] or 0
+      local color = uses > 0 and 7 or 5
+      print(name .. " (" .. uses .. ")", x + 8, y, color)
+      y += 8
+    end
+
+    spr(16, x, pointer_y)
   end
   -- #endregion
 
@@ -254,7 +311,7 @@ function battle_new(players, enemies)
       if done and type == "player" then
         del(combatants, active)
         message = active.name .. "'s turn"
-        state = { type = "player_turn", player = active }
+        state = { type = "player_turn", player = active, index = 1 }
       elseif done and type == "enemy" then
         del(combatants, active)
         message = active.name .. "'s turn"
@@ -264,7 +321,11 @@ function battle_new(players, enemies)
     end
 
     if state.type == "player_turn" then
-      if btnp(4) then
+      if btnp(3) then
+        state.index = (state.index % 3) + 1
+      elseif btnp(2) then
+        state.index = (state.index - 2) % 3 + 1
+      elseif btnp(4) and state.index == 1 then
         local effect = { type = "attack", attacker = state.player, target = nil }
         local effects = { effect }
         local targets = find_melee_targets(enemies)
@@ -278,6 +339,49 @@ function battle_new(players, enemies)
           targets = targets,
           index = 1
         }
+      elseif btnp(4) and state.index == 2 then
+        local type = state.player.command.type
+        if type == "command" then
+          message = "command not implemented"
+        elseif type == "spell" then
+          state = {
+            type = "select_menu_option",
+            player = state.player,
+            name = state.player.command.name,
+            spells = state.player.command.spells,
+            index = 1
+          }
+        end
+      end
+      return
+    end
+
+    if state.type == "select_menu_option" then
+      if btnp(3) then
+        state.index = (state.index % #state.spells) + 1
+      elseif btnp(2) then
+        state.index = (state.index - 2) % #state.spells + 1
+      elseif btnp(4) then
+        local spell = state.spells[state.index]
+        local uses = state.player.spell_uses[spell.level] or 0
+        if uses > 0 then
+          local effects = spell.effects(state.player)
+
+          local targets = spell.range == "melee" and find_melee_targets(enemies)
+              or spell.range == "single" and find_single_targets(enemies)
+
+          message = "select target"
+          state = {
+            type = "select_target",
+            player = state.player,
+            effects = effects,
+            targets = targets,
+            index = 1
+          }
+        end
+      elseif btnp(5) then
+        message = state.player.name .. "'s turn"
+        state = { type = "player_turn", player = state.player, index = 1 }
       end
       return
     end
@@ -291,7 +395,9 @@ function battle_new(players, enemies)
         local target = state.targets[state.index]
 
         for effect in all(state.effects) do
-          effect.target = target
+          if not effect.target then
+            effect.target = target
+          end
         end
 
         state = {
@@ -303,7 +409,7 @@ function battle_new(players, enemies)
         }
       elseif btnp(5) then
         message = state.player.name .. "'s turn"
-        state = { type = "player_turn", player = state.player }
+        state = { type = "player_turn", player = state.player, index = 1 }
       end
       return
     end
@@ -353,7 +459,7 @@ function battle_new(players, enemies)
         state = { type = "win" }
       elseif type == "player" then
         message = active.name .. "'s turn"
-        state = { type = "player_turn", player = active }
+        state = { type = "player_turn", player = active, index = 1 }
       elseif type == "enemy" then
         message = active.name .. "'s turn"
         state = { type = "enemy_turn", enemy = active }
@@ -369,7 +475,9 @@ function battle_new(players, enemies)
     draw_player_stats(players)
 
     if state.type == "player_turn" then
-      draw_menu(state.player)
+      draw_menu(state.player, state.index)
+    elseif state.type == "select_menu_option" then
+      draw_spell_menu(state)
     end
   end
 
