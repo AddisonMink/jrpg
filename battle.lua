@@ -1,13 +1,30 @@
 function battle_new(players, enemies)
-  local MESSAGE_DUR = 0.75
-  local FLASH_DUR = 0.25
+  -- #region constants
+  local MESSAGE_DUR = 0.5
+  local FLASH_DUR = 0.5
+
+  local ENEMY_TARGET_TABLE = {
+    melee = {
+      [4] = { 40, 30, 15, 15 },
+      [3] = { 50, 30, 20 },
+      [2] = { 60, 40 },
+      [1] = { 100 }
+    },
+    uniform = {
+      [4] = { 25, 25, 25, 25 },
+      [3] = { 33, 33, 34 },
+      [2] = { 50, 50 },
+      [1] = { 100 }
+    }
+  }
+  -- #endregion
+
   local combatants = {}
   local state = { type = "start", t0 = time(), dur = MESSAGE_DUR }
   local message = "enemies appear!"
   local me = {}
 
-  -- #region player targeting
-  function find_melee_targets(enemies)
+  local function find_melee_targets(enemies)
     local targets = {}
 
     for enemy in all(enemies) do
@@ -18,17 +35,31 @@ function battle_new(players, enemies)
 
     return targets
   end
-  -- #endregion
 
-  function enqueue_effect(effects, new_effect)
-    if #effects == 0 then
-      add(effects, new_effect)
-    else
-      add(effects, 1, new_effect)
+  local function enemy_find_target(players, distribution)
+    distribution = distribution or "uniform"
+    local table = ENEMY_TARGET_TABLE[distribution][#players]
+
+    local r = rnd(99) + 1
+    local cum_prob = 0
+    local target = nil
+    for i = 1, #table do
+      cum_prob += table[i]
+      if r <= cum_prob then
+        target = players[i]
+        break
+      end
     end
+
+    return target or players[#players]
   end
 
-  function execute_effect(state)
+  local function compute_damage(power)
+    local roll = flr(rnd(4)) + 1
+    return max(1, power + roll)
+  end
+
+  local function execute_effect(state)
     local effect = state.effects[1]
     del(state.effects, effect)
 
@@ -39,18 +70,21 @@ function battle_new(players, enemies)
       message = effect.attacker.name .. " attacks"
       state.t0 = time()
       state.dur = MESSAGE_DUR
-      enqueue_effect(state.effects, new_effect)
+      add(state.effects, new_effect, 1)
     elseif effect.type == "damage" then
       local damage = compute_damage(effect.power)
 
       effect.target.hp -= damage
       message = tostring(damage) .. " damage"
       state.t0 = time()
-      state.dur = MESSAGE_DUR
+      state.dur = 0
+
+      local new_effect = { type = "flash", target = effect.target, color = 8 }
+      add(state.effects, new_effect, 1)
 
       if effect.target.hp <= 0 then
         local new_effect = { type = "kill", target = effect.target }
-        enqueue_effect(state.effects, new_effect)
+        add(state.effects, new_effect, 2)
       end
     elseif effect.type == "kill" then
       message = effect.target.name .. " is defeated!"
@@ -59,6 +93,28 @@ function battle_new(players, enemies)
       del(enemies, effect.target)
       del(players, effect.target)
       del(combatants, effect.target)
+    elseif effect.type == "flash" then
+      state.t0 = time()
+      state.dur = FLASH_DUR
+      state.animation = { type = "flash", target = effect.target, color = effect.color }
+    end
+  end
+
+  local function collapse_column(enemies, col)
+    local first_col_empty = true
+    for enemy in all(enemies) do
+      if enemy.position <= 3 then
+        first_col_empty = false
+        break
+      end
+    end
+
+    if first_col_empty then
+      for enemy in all(enemies) do
+        if enemy.position > 3 then
+          enemy.position -= 3
+        end
+      end
     end
   end
 
@@ -84,11 +140,26 @@ function battle_new(players, enemies)
       local turn = state.type == "player_turn" and state.player == player
       local x = turn and player_x or player_x + 8
       local y = player_y + (player.position - 1) * 10
+
+      local anim = state.animation
+          and state.animation.target == player
+          and state.animation
+
+      local tint = anim
+          and anim.type == "flash"
+          and anim.color
+
+      if tint then
+        for i = 0, 15 do
+          pal(i, tint)
+        end
+      end
       spr(player.sprite, x, y)
+      pal()
     end
   end
 
-  local function draw_enemies(enemies)
+  local function draw_enemies(enemies, state)
     local ox, oy = 4, 32
     local w, h = 84, 48
     local enemy_x, enemy_y = ox, oy + 8
@@ -97,14 +168,29 @@ function battle_new(players, enemies)
     rect(ox, oy, ox + w, oy + h, 7)
 
     for enemy in all(enemies) do
+      local anim = state.animation
+          and state.animation.target == enemy
+          and state.animation
+
+      local tint = anim
+          and anim.type == "flash"
+          and anim.color
+
       local selected = state.type == "select_target"
           and state.targets[state.index] == enemy
 
-      local col = combatant_col(enemy)
-      local row = combatant_row(enemy)
+      local row = (9 - enemy.position) % 3 + 1
+      local col = flr((9 - enemy.position) / 3) + 1
       local x = enemy_x + col * 24
       local y = enemy_y + (row - 1) * 12
+
+      if tint then
+        for i = 0, 15 do
+          pal(i, tint)
+        end
+      end
       spr(enemy.sprite, x, y)
+      pal()
 
       if selected then
         spr(16, x - 8, y + 2)
@@ -212,7 +298,6 @@ function battle_new(players, enemies)
           active = state.player,
           type = "exec_effects",
           effects = state.effects,
-          animations = {},
           t0 = 0,
           dur = MESSAGE_DUR
         }
@@ -224,17 +309,29 @@ function battle_new(players, enemies)
     end
 
     if state.type == "enemy_turn" then
-      state = { type = "end_turn", active = state.enemy }
+      local target = enemy_find_target(players, "melee")
+      local effect1 = { type = "flash", target = state.enemy, color = 7 }
+      local effect2 = { type = "attack", attacker = state.enemy, target = target }
+      local effects = { effect1, effect2 }
+
+      state = {
+        active = state.enemy,
+        type = "exec_effects",
+        effects = effects,
+        t0 = 0,
+        dur = MESSAGE_DUR
+      }
       return
     end
 
     if state.type == "exec_effects" then
       local time_up = time() - state.t0 > state.dur
-      local done = #state.effects == 0 and #state.animations == 0
+      local done = #state.effects == 0
 
       if time_up and done then
         state = { type = "end_turn", active = state.active }
       elseif time_up then
+        state.animation = nil
         execute_effect(state)
       end
       return
@@ -246,8 +343,15 @@ function battle_new(players, enemies)
 
       add(combatants, state.active)
       del(combatants, active)
+      collapse_column(enemies, 1)
 
-      if type == "player" then
+      if #players == 0 then
+        message = "defeated..."
+        state = { type = "lose" }
+      elseif #enemies == 0 then
+        message = "victory!"
+        state = { type = "win" }
+      elseif type == "player" then
         message = active.name .. "'s turn"
         state = { type = "player_turn", player = active }
       elseif type == "enemy" then
@@ -261,7 +365,7 @@ function battle_new(players, enemies)
   function me:draw()
     draw_message(message)
     draw_players(players)
-    draw_enemies(enemies)
+    draw_enemies(enemies, state)
     draw_player_stats(players)
 
     if state.type == "player_turn" then
