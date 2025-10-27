@@ -1,7 +1,9 @@
 pico-8 cartridge // http://www.pico-8.com
 version 42
 __lua__
+#include anim.lua
 #include spell.lua
+#include enemy.lua
 #include battle.lua
 
 function combatant_new(type, name, sprite, position, hp, strength)
@@ -91,22 +93,6 @@ function elf_new(name, position)
   local me = combatant_new("player", name, sprite, position, hp, strength)
   me.command = command
   me.spell_uses = spell_uses
-  return me
-end
-
-function goblin_new(position)
-  local sprite = 2
-  local hp = 3
-  local strength = -1
-  return combatant_new("enemy", "goblin", sprite, position, hp, strength)
-end
-
-function skeleton_new(position)
-  local sprite = 4
-  local hp = 2
-  local strength = 0
-  local me = combatant_new("enemy", "skeleton", sprite, position, hp, strength)
-  me.undead = true
   return me
 end
 

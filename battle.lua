@@ -1,22 +1,9 @@
 function battle_new(players, enemies)
   -- #region constants
   local MESSAGE_DUR = 0.5
-  local FLASH_DUR = 0.5
+  local FLASH_DUR = 0.125
+  local NUMBER_DUR = 0.5
 
-  local ENEMY_TARGET_TABLE = {
-    melee = {
-      [4] = { 40, 30, 15, 15 },
-      [3] = { 50, 30, 20 },
-      [2] = { 60, 40 },
-      [1] = { 100 }
-    },
-    uniform = {
-      [4] = { 25, 25, 25, 25 },
-      [3] = { 33, 33, 34 },
-      [2] = { 50, 50 },
-      [1] = { 100 }
-    }
-  }
   -- #endregion
 
   local combatants = {}
@@ -40,24 +27,6 @@ function battle_new(players, enemies)
     return enemies
   end
 
-  local function enemy_find_target(players, distribution)
-    distribution = distribution or "uniform"
-    local table = ENEMY_TARGET_TABLE[distribution][#players]
-
-    local r = rnd(99) + 1
-    local cum_prob = 0
-    local target = nil
-    for i = 1, #table do
-      cum_prob += table[i]
-      if r <= cum_prob then
-        target = players[i]
-        break
-      end
-    end
-
-    return target or players[#players]
-  end
-
   local function compute_damage(power)
     local roll = flr(rnd(4)) + 1
     return max(1, power + roll)
@@ -78,18 +47,21 @@ function battle_new(players, enemies)
     elseif effect.type == "damage" then
       local damage = compute_damage(effect.power)
 
-      effect.target.hp -= damage
+      effect.target.hp = max(0, effect.target.hp - damage)
       effect.target.sleep = false
       message = tostring(damage) .. " damage"
       state.t0 = time()
       state.dur = 0
+
+      local new_effect = { type = "number", target = effect.target, number = damage, color = 7 }
+      add(state.effects, new_effect, 1)
 
       local new_effect = { type = "flash", target = effect.target, color = 8 }
       add(state.effects, new_effect, 1)
 
       if effect.target.hp <= 0 then
         local new_effect = { type = "kill", target = effect.target }
-        add(state.effects, new_effect, 2)
+        add(state.effects, new_effect, 3)
       end
     elseif effect.type == "kill" then
       message = effect.target.name .. " is defeated!"
@@ -145,6 +117,17 @@ function battle_new(players, enemies)
       message = "recovered " .. tostring(power) .. " hp"
       state.t0 = time()
       state.dur = MESSAGE_DUR
+    elseif effect.type == "number" then
+      state.t0 = time()
+      state.dur = NUMBER_DUR
+      state.animation = {
+        type = "overlay",
+        target = effect.target,
+        number = {
+          value = effect.number,
+          color = effect.color
+        }
+      }
     end
   end
 
@@ -190,9 +173,8 @@ function battle_new(players, enemies)
             or state.type == "select_menu_option"
             or state.type == "select_all_enemies")
           and state.player == player
-
-      local selected = state.type == "select_target"
-          and state.targets[state.index] == player
+          or state.type == "exec_effects"
+          and state.active == player
 
       local x = turn and player_x or player_x + 8
       local y = player_y + (player.position - 1) * 10
@@ -204,6 +186,10 @@ function battle_new(players, enemies)
       local overlay = anim
           and anim.type == "overlay"
           and anim.animation
+
+      local number = anim
+          and anim.type == "overlay"
+          and anim.number
 
       local tint = anim
           and anim.type == "flash"
@@ -222,6 +208,14 @@ function battle_new(players, enemies)
         local frame_index = flr((time() - state.t0) * overlay.fps) % frame_count + 1
         local frame = overlay.frames[frame_index]
         spr(frame, x, y)
+      end
+
+      if number then
+        local str = tostring(number.value)
+        local progress = min(1, (time() - state.t0) / state.dur)
+        local x = x + (8 - #str * 4) / 2
+        local y = y - progress * 8
+        print(number.value, x, y, number.color)
       end
 
       if selected then
@@ -251,6 +245,10 @@ function battle_new(players, enemies)
           and anim.type == "overlay"
           and anim.animation
 
+      local number = anim
+          and anim.type == "overlay"
+          and anim.number
+
       local selected = state.type == "select_target"
           and state.targets[state.index] == enemy
           or state.type == "select_all_enemies"
@@ -277,6 +275,14 @@ function battle_new(players, enemies)
         local frame_index = flr((time() - state.t0) * overlay.fps) % frame_count + 1
         local frame = overlay.frames[frame_index]
         spr(frame, x, y)
+      end
+
+      if number then
+        local str = tostring(number.value)
+        local progress = min(1, (time() - state.t0) / state.dur)
+        local x = x + (8 - #str * 4) / 2
+        local y = y - progress * 8
+        print(number.value, x, y, number.color)
       end
 
       if enemy.sleep then
@@ -515,10 +521,7 @@ function battle_new(players, enemies)
     end
 
     if state.type == "enemy_turn" then
-      local target = enemy_find_target(players, "melee")
-      local effect1 = { type = "flash", target = state.enemy, color = 7 }
-      local effect2 = { type = "attack", attacker = state.enemy, target = target }
-      local effects = { effect1, effect2 }
+      local effects = state.enemy.behavior(state.enemy, enemies, players)
 
       state = {
         active = state.enemy,
