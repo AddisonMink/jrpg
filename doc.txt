@@ -1,0 +1,69 @@
+animation = {
+  fps = int?
+  loop = bool?
+  frames = {
+    {sx,sy,w,h,ox?,oy?}
+  }
+}
+
+combatant = {
+  type = "player" | "enemy",
+  name = string,
+  animation = animation
+  hp = int,
+  hp_max = int,
+  speed = int,
+  spell_slots = [int],
+  spells = map[int,[spell]],  
+  sleep_resist = int,
+  sleep = bool,  
+  undead = bool,
+  -- enemy-only fields
+  behavior = (me,enemies,players) => [effect],
+  -- player-only fields
+  strength = int,
+  command = string,
+}
+
+spell = {
+  name = string,
+  level = int,
+  range = "melee" | "single" | "enemies" | "ally",
+  effects = [effect]
+}
+
+effect
+  = damage { target, power, type }
+  | flash { target, color }
+  | overlay_message { target, text, color }
+  | set_message { text }
+  | set_sleep { target }
+  | wake_up { target }
+  | overlay_animation { target, animation }
+  | kill { target }
+
+global_state = {
+  players = [combatants],
+  enemies = [combatants],
+  queue = [combatants],
+  message = string
+}
+
+state
+  = selecting_action { index = int }
+  | selecting_spell { index = int }
+  | selecting_single_target { effects = [effect], targets = [enemy], index = int }
+  | selecting_all_enemies { effects = [effect] }
+  | enemy_turn 
+  | executing_effects { 
+    effects = [effect],
+    t0 = time,
+    dur = time
+    overlay_animation = { target = combatant, frames = [int], fps = int },
+    overlay_message = { target = combatant, message = string, color = int },
+    flash = { target = combatant, color = int },
+    combatant_animation = { target = combatant, frames = [int], fps = int }
+  }
+  | ending_turn
+  | win
+  | lose
