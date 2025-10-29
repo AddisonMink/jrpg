@@ -35,6 +35,9 @@ spell = {
 effect
   = damage { target, power, type }
   | flash { target, color }
+  | message { text }
+
+
   | overlay_message { target, text, color }
   | set_message { text }
   | set_sleep { target }
@@ -59,10 +62,9 @@ state
     effects = [effect],
     t0 = time,
     dur = time
-    overlay_animation = { target = combatant, frames = [int], fps = int },
+    overlay_animation = { target = combatant, animation = animation },
     overlay_message = { target = combatant, message = string, color = int },
     flash = { target = combatant, color = int },
-    combatant_animation = { target = combatant, frames = [int], fps = int }
   }
   | ending_turn
   | win

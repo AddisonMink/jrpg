@@ -44,6 +44,12 @@ ANIMATION_WIZARD_ITEM = {
   }
 }
 
+ANIMATION_ELF_IDLE = {
+  frames = {
+    { 16, 0, 16, 16 }
+  }
+}
+
 function enemy_animation(sx, sy, sw, sh)
   local anim = {
     frames = {
