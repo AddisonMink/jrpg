@@ -26,6 +26,11 @@ function battle_new(players, enemies)
     local single_selected = state.type == "select_target"
         and state.targets[state.index] == combatant
 
+    local enemy_selected = combatant.type == "enemy"
+        and state.type == "select_all_enemies"
+
+    local selected = single_selected or enemy_selected
+
     local tint = state.flash
         and state.flash.target == combatant
         and state.flash.color
@@ -33,6 +38,10 @@ function battle_new(players, enemies)
     local message = state.overlay_message
         and state.overlay_message.target == combatant
         and state.overlay_message
+
+    local overlay = state.overlay_animation
+        and state.overlay_animation.target == combatant
+        and state.overlay_animation
 
     if tint then
       for i = 0, 15 do
@@ -42,8 +51,16 @@ function battle_new(players, enemies)
     animation_draw(animation, x, y, t0)
     pal()
 
-    if single_selected then
+    if selected then
       spr(16, x - 8, y + 2)
+    end
+
+    if combatant.sleep then
+      spr(1, x + 16, y)
+    end
+
+    if overlay then
+      animation_draw(overlay.animation, x, y, overlay.t0)
     end
 
     if message then
@@ -123,12 +140,38 @@ function battle_new(players, enemies)
 
     print("attack", x + 10, y, 7)
     y += 8
-    print("command", x + 10, y, 5)
+    if player.command then
+      print(player.command, x + 10, y, 7)
+    else
+      print("command", x + 10, y, 5)
+    end
     y += 8
     print("item", x + 10, y, 5)
     y += 8
     print("wait", x + 10, y, 7)
     y += 8
+    spr(16, x, pointer_y)
+  end
+
+  local function draw_spell_menu(player, x, y, index)
+    local w, h = 60, 48
+    local pointer_y = y + 14 + (index - 1) * 8
+
+    rectfill(x, y, x + w - 1, y + h - 1, 0)
+    rect(x, y, x + w - 1, y + h - 1, 7)
+
+    x += 4
+    y += 4
+    print(player.command, x, y, 7)
+    y += 10
+
+    for spell in all(player.spells) do
+      local uses = player.spell_uses[spell.level] or 0
+      local color = uses > 0 and 7 or 5
+      print(spell.name .. " (" .. uses .. ")", x + 10, y, color)
+      y += 8
+    end
+
     spr(16, x, pointer_y)
   end
   -- #endregion
@@ -169,6 +212,7 @@ function battle_new(players, enemies)
       local message = damage .. " damage"
 
       target.hp.current = max(0, target.hp.current - damage)
+      target.sleep = false
 
       add(state.effects, { type = "flash", target = target, color = 8 }, 1)
       add(state.effects, { type = "overlay_message", target = target, text = tostring(damage), color = 7 })
@@ -201,11 +245,39 @@ function battle_new(players, enemies)
       return
     end
 
+    if effect.type == "overlay_animation" then
+      state.overlay_animation = { target = effect.target, animation = effect.animation }
+      state.t0 = time()
+      state.dur = OVERLAY_MESSAGE_DUR
+      return
+    end
+
     if effect.type == "kill" then
       del(queue, effect.target)
       del(enemies, effect.target)
       del(players, effect.target)
       add(state.effects, { type = "message", text = effect.target.name .. " was defeated!" })
+      return
+    end
+
+    if effect.type == "set_sleep" then
+      local target = effect.target
+      target.sleep = true
+
+      state.overlay_animation = { target = target, animation = ANIMATION_SLEEP, t0 = time() }
+      state.t0 = time()
+      state.dur = OVERLAY_MESSAGE_DUR
+      return
+    end
+
+    if effect.type == "use_spell" then
+      local target = effect.target
+      local spell = effect.spell
+      target.spell_uses[spell.level] = max(0, (target.spell_uses[spell.level] or 0) - 1)
+
+      message = target.name .. " casts " .. spell.name
+      state.t0 = time()
+      state.dur = MESSAGE_DUR
       return
     end
   end
@@ -228,9 +300,50 @@ function battle_new(players, enemies)
       elseif btnp(3) then
         state.index = state.index % 4 + 1
       elseif btnp(4) and state.index == 1 then
+        local player = queue[1]
+        local effect = { type = "damage", power = player.strength }
         message = "select target"
         targets = find_melee_targets()
-        state = { type = "select_target", targets = targets, index = 1 }
+        state = { type = "select_target", effects = { effect }, targets = targets, index = 1 }
+      elseif btnp(4) and state.index == 2 and queue[1].spells then
+        message = "select spell"
+        state = { type = "select_spell", index = 1 }
+      end
+      return
+    end
+
+    if state.type == "select_spell" then
+      local player = queue[1]
+      local n = #player.spells
+      if btnp(2) then
+        state.index = (state.index - 2) % n + 1
+      elseif btnp(3) then
+        state.index = state.index % n + 1
+      elseif btnp(4) then
+        local spell = player.spells[state.index]
+        local uses = player.spell_uses[spell.level] or 0
+        if uses <= 0 then return end
+        if spell.range == "all_enemies" then
+          message = "select targets"
+          state = {
+            type = "select_all_enemies",
+            spell = spell,
+            effects = spell.effects
+          }
+        elseif spell.range == "single_enemy" then
+          message = "select target"
+          local targets = enemies
+          state = {
+            type = "select_target",
+            spell = spell,
+            effects = spell.effects,
+            targets = targets,
+            index = 1
+          }
+        end
+      elseif btnp(5) then
+        message = "select action"
+        state = { type = "select_action", index = 1 }
       end
       return
     end
@@ -244,23 +357,68 @@ function battle_new(players, enemies)
         local player = queue[1]
         local anim = player.animations.attack
         local target = state.targets[state.index]
-        local power = player.strength
-        local effect = { type = "damage", target = target, power = power }
+        local anim = state.spell and player.animations.item or player.animations.attack
 
-        player.animation = {
-          animation = player.animations.attack,
-          t0 = time()
-        }
+        local effects = {}
+        for effect in all(state.effects) do
+          local new_effect = copy_table(effect)
+          new_effect.target = target
+          add(effects, new_effect)
+        end
+
+        if state.spell then
+          local effect = { type = "use_spell", target = player, spell = state.spell }
+          add(effects, effect, 1)
+        end
+
+        player.animation = { animation = anim, t0 = time() }
 
         state = {
           type = "execute_effects",
-          effects = { effect },
+          effects = effects,
           t0 = time(),
           dur = 0,
           overlay_animation = nil,
           overlay_message = nil,
           flash = nil
         }
+      end
+      return
+    end
+
+    if state.type == "select_all_enemies" then
+      if btnp(4) then
+        local effects = {}
+        for enemy in all(enemies) do
+          for effect in all(state.effects) do
+            local new_effect = copy_table(effect)
+            new_effect.target = enemy
+            add(effects, new_effect)
+          end
+        end
+
+        queue[1].animation = {
+          animation = queue[1].animations.item,
+          t0 = time()
+        }
+
+        if state.spell then
+          local effect = { type = "use_spell", target = queue[1], spell = state.spell }
+          add(effects, effect, 1)
+        end
+
+        state = {
+          type = "execute_effects",
+          effects = effects,
+          t0 = time(),
+          dur = 0,
+          overlay_animation = nil,
+          overlay_message = nil,
+          flash = nil
+        }
+      elseif btnp(5) then
+        message = "select spell"
+        state = { type = "select_spell", index = 1 }
       end
       return
     end
@@ -305,15 +463,15 @@ function battle_new(players, enemies)
         state = { type = "select_action", index = 1 }
       elseif queue[1].type == "enemy" then
         local enemy = queue[1]
-        local effects = enemy.behavior(enemy, enemies, players)
+
+        local effects = enemy.sleep and { { type = "message", text = enemy.name .. " is asleep" } }
+            or enemy.behavior(enemy, enemies, players)
+
         state = {
           type = "execute_effects",
           effects = effects,
           t0 = time(),
-          dur = 0,
-          overlay_animation = nil,
-          overlay_message = nil,
-          flash = nil
+          dur = 0
         }
       end
       return
@@ -329,6 +487,9 @@ function battle_new(players, enemies)
     if state.type == "select_action" then
       local active = queue[1]
       draw_menu(active, 10, 25, state.index)
+    elseif state.type == "select_spell" then
+      local active = queue[1]
+      draw_spell_menu(active, 10, 25, state.index)
     end
   end
 

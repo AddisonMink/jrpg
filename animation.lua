@@ -50,6 +50,27 @@ ANIMATION_ELF_IDLE = {
   }
 }
 
+ANIMATION_SLEEP = {
+  loop = false,
+  fps = 8,
+  frames = {
+    { 32, 0, 16, 16 },
+    { 48, 0, 16, 16 },
+    { 64, 0, 16, 16 },
+    { 0, 0, 0, 0 }
+  }
+}
+
+ANIMATION_FIRE = {
+  loop = true,
+  fps = 8,
+  frames = {
+    { 32, 16, 16, 16 },
+    { 48, 16, 16, 16 },
+    { 64, 16, 16, 16 }
+  }
+}
+
 function enemy_animation(sx, sy, sw, sh)
   local anim = {
     frames = {

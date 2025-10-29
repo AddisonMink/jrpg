@@ -57,12 +57,15 @@ function wizard_new(name)
       t0 = time()
     },
     hp = { current = 6, max = 6 },
+    spell_uses = { 2 },
+    spells = { SPELL_FIRE, SPELL_SLEEP },
     -- player-only stats
     animations = {
       idle = ANIMATION_WIZARD_IDLE,
       attack = ANIMATION_WIZARD_ATTACK,
       item = ANIMATION_WIZARD_ITEM
     },
+    command = "spell",
     strength = -1
   }
 end
