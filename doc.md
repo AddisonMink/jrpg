@@ -1,3 +1,23 @@
+# Memory Layout
+
+## Sprites
+| Content | Sprite ID | Size |
+|-|-|-|
+| Player 1 Spritesheet | ID 0 | 128x16 px | Loaded from data |
+| Player 2 Spritesheet | ID 32 | 128x16 px | Loaded from data |
+| Player 3 Spritesheet | ID 64 | 128x16 px | Loaded from data |
+| Enemy 1 Sprite | ID 96 | 16x16 px | Loaded from data |
+| Enemy 2 Sprite | ID 98 | 16x16 px | Loaded from data |
+| Enemy 3 Sprite | ID 100 | 16x16 px | Loaded from data |
+| Enemy 4 Sprite | ID 102 | 16x16 px | Loaded from data |
+| Sleep Animation | ID 104 | 48x16 px | On disk |
+| Sleep Icon | ID 110 | 8x8 px | On disk |
+| Pointer Icon | ID 111 | 8x8 px | On disk |
+| ? Icon | ID 126 | 8x8 px | On disk |
+| ? Icon | ID 127 | 8x8 px | On disk |
+| Flame Animation | ID 128 | 48x16 px | On disk |
+
+
 animation = {
   fps = int?
   loop = bool?
