@@ -8,35 +8,179 @@ __lua__
 #include combatant.lua
 #include battle.lua
 
+ANIMATION_ATTACK_OFFSETS = { 0, 2, 5 }
+ANIMATION_ATTACK_X_OFFSETS = { -4, -12, -12 }
+
+animation_sleep_id = 104
+animation_fire_id = 128
+
 function id_to_sxsy(id)
   local sx = (id % 16) * 8
   local sy = flr(id / 16) * 8
   return sx, sy
 end
 
+function load_battle(players, enemies)
+  local player_sprite_ids = { 0, 32, 64 }
+  local player_sprite_index = 1
+
+  local enemy_sprite_ids = { 96, 98, 100, 102 }
+  local enemy_sprite_index = 1
+
+  -- get set of player types
+  local player_types = {}
+  for p in all(players) do
+    player_types[p.type] = true
+  end
+
+  -- cache player sprites
+  for pt, _ in pairs(player_types) do
+    local sprite_id = player_sprite_ids[player_sprite_index]
+    cache_player_sprite_data(pt, sprite_id)
+    player_types[pt] = sprite_id
+    player_sprite_index += 1
+  end
+
+  -- get set of enemy types
+  local enemy_types = {}
+  for e in all(enemies) do
+    enemy_types[e.type] = true
+  end
+
+  -- cache enemy sprites
+  for et, _ in pairs(enemy_types) do
+    local sprite_id = enemy_sprite_ids[enemy_sprite_index]
+    cache_enemy_sprite_data(et, sprite_id)
+    enemy_types[et] = sprite_id
+    enemy_sprite_index += 1
+  end
+
+  -- initialize players
+  for p in all(players) do
+    p.side = "player"
+    p.sprite_id = player_types[p.type]
+    p.state = "idle"
+    p.state_started_at = time()
+  end
+
+  -- initialize enemies
+  local position = 1
+  for e in all(enemies) do
+    e.side = "enemy"
+    e.sprite_id = enemy_types[e.type]
+    e.position = position
+    position += 1
+  end
+
+  return {
+    players = players,
+    enemies = enemies
+  }
+end
+
+function draw_battle(battle)
+  draw_players(battle.players)
+  draw_enemies(battle.enemies)
+end
+
+function draw_players(players)
+  local x, y = 64, 8
+
+  for p in all(players) do
+    draw_player(p, x, y)
+    y += 20
+  end
+end
+
+function draw_enemies(enemies)
+  local x, y = 32, 48
+
+  for e in all(enemies) do
+    local grid_x = flr((e.position - 1) / 3)
+    local grid_y = (e.position - 1) % 3
+    local x = x - grid_x * 20
+    local y = y - grid_y * 20
+    draw_enemy(e, x, y)
+  end
+end
+
+function draw_player(player, x, y)
+  if player.state == "idle" then
+    local sx, sy = id_to_sxsy(player.sprite_id)
+    sspr(sx, sy, 16, 16, x, y)
+  elseif player.state == "attack" then
+    local t = time() - player.state_started_at
+    local start_id = player.sprite_id + 2
+    local frame = min(flr(t * 8), 2) + 1
+    local offset = ANIMATION_ATTACK_OFFSETS[frame]
+    local id = start_id + offset
+    local sx, sy = id_to_sxsy(id)
+    local w = frame == 1 and 16 or 20
+    local dx = ANIMATION_ATTACK_X_OFFSETS[frame]
+    sspr(sx, sy, w, 16, x + dx, y)
+  elseif player.state == "special" then
+    local start_id = player.sprite_id + 10
+    local frame = flr(time() * 8) % 2
+    local id = start_id + frame
+    local sx, sy = id_to_sxsy(id)
+    sspr(sx, sy, 16, 16, x, y)
+  end
+end
+
+function draw_enemy(enemy, x, y)
+  local sx, sy = id_to_sxsy(enemy.sprite_id)
+  sspr(sx, sy, 16, 16, x, y)
+end
+
+function draw_animation(id, x, y, t0)
+  local t = time() - (t0 or 0)
+  local frame = flr(t * 8)
+  local id = id + frame * 2
+  local sx, sy = id_to_sxsy(id)
+  if frame < 3 then
+    sspr(sx, sy, 16, 16, x, y)
+  end
+end
+
 function _init()
   reload(0x8000, 0, 0x2000, "data1.p8")
 
-  cache_player_sprite_data("elf", 0)
-  cache_player_sprite_data("warrior", 32)
-  cache_player_sprite_data("wizard", 64)
-  cache_enemy_sprite_data("goblin", 96)
+  local players = {
+    {
+      type = "warrior"
+    },
+    {
+      type = "elf"
+    },
+    {
+      type = "wizard"
+    }
+  }
 
-  cls()
-  local sx, sy = id_to_sxsy(0)
-  sspr(sx, sy, 128, 16, 0, 0)
-  sx, sy = id_to_sxsy(32)
-  sspr(sx, sy, 128, 16, 0, 20)
-  sx, sy = id_to_sxsy(64)
-  sspr(sx, sy, 128, 16, 0, 40)
-  sx, sy = id_to_sxsy(96)
-  sspr(sx, sy, 16, 16, 0, 60)
+  local enemies = {
+    {
+      type = "goblin"
+    },
+    {
+      type = "goblin"
+    },
+    {
+      type = "goblin"
+    },
+    {
+      type = "goblin"
+    }
+  }
+
+  battle = load_battle(players, enemies)
 end
 
 function _update()
 end
 
 function _draw()
+  cls()
+  draw_battle(battle)
 end
 
 __gfx__
