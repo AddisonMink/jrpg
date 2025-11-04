@@ -2,6 +2,7 @@ ANIMATION_SLEEP_ID = 104
 ANIMATION_FIRE_ID = 128
 ANIMATION_BANISH_ID = 160
 ANIMATION_HEAL_ID = 136
+ANIMATION_SHOUT_ID = 168
 
 SPELL_FIRE = {
   name = "fire",
@@ -19,7 +20,7 @@ SPELL_SLEEP = {
   range = "all",
   effects = {
     { type = "animation", id = ANIMATION_SLEEP_ID },
-    { type = "sleep" }
+    { type = "sleep", power = 5 }
   }
 }
 
@@ -29,7 +30,7 @@ SPELL_BANISH = {
   range = "all",
   effects = {
     { type = "animation", id = ANIMATION_BANISH_ID },
-    { type = "banish", power = 2 }
+    { type = "banish", power = 10 }
   }
 }
 

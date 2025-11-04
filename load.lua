@@ -6,7 +6,9 @@ ASSET_MAP = {
   thief = 128,
   goblin = 192,
   hobgoblin = 194,
-  zombie = 224
+  witch = 230,
+  wolf = 196,
+  zombie = 224,
 }
 
 function sprite_id_to_address(id)

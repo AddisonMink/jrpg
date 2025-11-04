@@ -53,6 +53,7 @@ function load_battle(players, enemy_list)
     p.state = "idle"
     p.state_started_at = time()
     p.hp = p.hp_max
+    p.sleep_resist = p.sleep_resist_max
 
     p.commands = { { name = "attack", type = "attack" } }
     if p.special then
@@ -102,6 +103,7 @@ function spawn_enemy(spawn_data, position)
   enemy.sprite_id = sprite_id
   enemy.position = position
   enemy.hp = enemy.hp_max
+  enemy.sleep_resist = enemy.sleep_resist_max
   enemy.side = "enemy"
   return enemy
 end
@@ -387,6 +389,7 @@ function execute_effect(battle)
 
     target.hp = max(target.hp - amount, 0)
     target.sleep = false
+    target.sleep_resist = target.sleep_resist_max
 
     add(effects, { type = "flash", target = target, color = 8 }, 1)
     add(effects, { type = "message", target = target, text = tostring(amount), color = 7 }, 2)
@@ -420,13 +423,19 @@ function execute_effect(battle)
 
   if effect.type == "kill" then
     local target = effect.target
+    local success = not target.undead or target.banish or rnd(100) < 66
 
-    battle.message = target.name .. " was defeated!"
-    battle.state.t0 = time()
-    battle.state.dur = MESSAGE_DUR
-    del(battle.enemies, target)
-    del(battle.players, target)
-    del(battle.queue, target)
+    if success then
+      battle.message = target.name .. " was defeated!"
+      battle.state.t0 = time()
+      battle.state.dur = MESSAGE_DUR
+      del(battle.enemies, target)
+      del(battle.players, target)
+      del(battle.queue, target)
+    else
+      target.hp = 1
+      add(effects, { type = "message", target = target, text = "undead", color = 7 }, 1)
+    end
     return
   end
 
@@ -445,7 +454,13 @@ function execute_effect(battle)
     if immune then
       add(effects, { type = "message", target = target, text = "immune", color = 7 }, 1)
     else
-      target.sleep = true
+      local roll = roll_dice(effect.power)
+      target.sleep_resist = max(0, target.sleep_resist - roll)
+      if target.sleep_resist == 0 then
+        target.sleep = true
+      else
+        add(effects, { type = "message", target = target, text = "resist", color = 7 }, 1)
+      end
     end
 
     return
@@ -458,6 +473,7 @@ function execute_effect(battle)
     if immune then
       add(effects, { type = "message", target = target, text = "immune", color = 7 }, 1)
     else
+      target.banish = true
       add(effects, { type = "damage", target = target, power = effect.power }, 1)
     end
 
@@ -498,6 +514,19 @@ function execute_effect(battle)
     add(battle.enemies, enemy, 1)
     add(battle.queue, enemy)
     return
+  end
+
+  if effect.type == "clear_status" then
+    effect.target.sleep = false
+    effect.target.sleep_resit = effect.target.sleep_resit_max
+  end
+
+  if effect.type == "might" then
+    local target = effect.target
+    if not target.might then
+      target.might = true
+      target.strength = flr(target.strength * 1.5)
+    end
   end
 end
 
@@ -661,6 +690,10 @@ function draw_combatant(combatant, x, y, state)
 
   if combatant.sleep then
     spr(110, x + 16, y)
+  end
+
+  if combatant.might then
+    spr(126, x + 16, y + 8)
   end
 
   if message then
