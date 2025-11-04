@@ -31,9 +31,29 @@ function goblin_new()
   return {
     type = "goblin",
     name = "goblin",
-    hp_max = 3,
+    hp_max = 5,
     behavior = function(me, enemies, players)
-      return basic_attack(me, players, 1)
+      return basic_attack(me, players, 6)
+    end
+  }
+end
+
+function hobgoblin_new()
+  return {
+    type = "hobgoblin",
+    name = "hobgoblin",
+    hp_max = 30,
+    spawn_list = { { type = "goblin" } },
+    behavior = function(me, enemies, players)
+      if #enemies < 4 then
+        return {
+          { type = "flash", target = me, color = 8 },
+          { type = "banner_message", text = me.name .. " calls for help!" },
+          { type = "spawn_enemy", enemy_type = "goblin" }
+        }
+      else
+        return basic_attack(me, players, 8)
+      end
     end
   }
 end
@@ -42,10 +62,16 @@ function zombie_new()
   return {
     type = "zombie",
     name = "zombie",
-    hp_max = 8,
+    hp_max = 20,
     undead = true,
     behavior = function(me, enemies, players)
-      return basic_attack(me, players, 2)
+      return basic_attack(me, players, 10)
     end
   }
 end
+
+SPAWN_FUNCTION_MAP = {
+  goblin = goblin_new,
+  hobgoblin = hobgoblin_new,
+  zombie = zombie_new
+}

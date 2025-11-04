@@ -5,6 +5,7 @@ ASSET_MAP = {
   priestess = 96,
   thief = 128,
   goblin = 192,
+  hobgoblin = 194,
   zombie = 224
 }
 

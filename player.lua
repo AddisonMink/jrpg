@@ -3,8 +3,8 @@ function warrior_new(name)
     type = "warrior",
     name = name,
     special = nil,
-    strength = 1,
-    hp_max = 10
+    hp_max = 100,
+    strength = 10
   }
 end
 
@@ -13,8 +13,8 @@ function elf_new(name)
     type = "elf",
     name = name,
     special = { name = "elf", type = "magic" },
-    strength = 0,
-    hp_max = 8,
+    hp_max = 80,
+    strength = 6,
     spell_slots = { 1 },
     spells = { SPELL_SLEEP, SPELL_HEAL }
   }
@@ -25,8 +25,8 @@ function wizard_new(name)
     type = "wizard",
     name = name,
     special = { name = "spell", type = "magic" },
-    strength = 0,
-    hp_max = 6,
+    hp_max = 60,
+    strength = 4,
     spell_slots = { 2 },
     spells = { SPELL_FIRE, SPELL_SLEEP }
   }
@@ -37,8 +37,8 @@ function priestess_new(name)
     type = "priestess",
     name = name,
     special = { name = "pray", type = "magic" },
-    strength = -1,
-    hp_max = 6,
+    hp_max = 60,
+    strength = 4,
     spell_slots = { 2 },
     spells = { SPELL_HEAL, SPELL_BANISH }
   }

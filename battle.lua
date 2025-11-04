@@ -8,7 +8,7 @@ ANIMATION_DUR = 1.0 / ANIMATION_FPS * 3.0 * 2
 -- #endregion
 
 -- #region initialization
-function load_battle(players, enemies)
+function load_battle(players, enemy_list)
   local player_sprite_ids = { 0, 32, 64 }
   local player_sprite_index = 1
 
@@ -31,8 +31,11 @@ function load_battle(players, enemies)
 
   -- get set of enemy types
   local enemy_types = {}
-  for e in all(enemies) do
-    enemy_types[e.type] = true
+  for e in all(enemy_list) do
+    enemy_types[e] = true
+    for e in all(e.spawn_list or {}) do
+      enemy_types[e] = true
+    end
   end
 
   -- cache enemy sprites
@@ -58,13 +61,18 @@ function load_battle(players, enemies)
     add(p.commands, { name = "defend", type = "defend" })
   end
 
+  -- build spawn dict for enemies
+  local spawn_dict = {}
+  for type, sprite_id in pairs(enemy_types) do
+    spawn_dict[type] = { func = SPAWN_FUNCTION_MAP[type], sprite_id = sprite_id }
+  end
+
   -- initialize enemies
   local position = 1
-  for e in all(enemies) do
-    e.side = "enemy"
-    e.sprite_id = enemy_types[e.type]
-    e.position = position
-    e.hp = e.hp_max
+  local enemies = {}
+  for e in all(enemy_list) do
+    local enemy = spawn_enemy(spawn_dict[e], position)
+    add(enemies, enemy)
     position += 1
   end
 
@@ -78,12 +86,24 @@ function load_battle(players, enemies)
   end
 
   return {
+    spawn_dict = spawn_dict,
     players = players,
     enemies = enemies,
     queue = queue,
     message = "enemies appear!",
     state = { type = "start", t0 = time() }
   }
+end
+
+function spawn_enemy(spawn_data, position)
+  local f = spawn_data.func
+  local sprite_id = spawn_data.sprite_id
+  local enemy = f()
+  enemy.sprite_id = sprite_id
+  enemy.position = position
+  enemy.hp = enemy.hp_max
+  enemy.side = "enemy"
+  return enemy
 end
 -- #endregion
 
@@ -279,7 +299,11 @@ function update_battle(battle)
     local finished = battle.queue[1]
     del(battle.queue, finished)
     add(battle.queue, finished)
+
+    -- collapse columns twice in case both first and second columns are empty
     collapse_column(battle.enemies)
+    collapse_column(battle.enemies)
+
     local next = battle.queue[1]
 
     if finished.side == "player" then
@@ -331,7 +355,13 @@ function find_melee_targets(enemies)
 end
 
 function roll_dice(power)
-  return flr(rnd(4)) + 1 + power
+  local base = power / 2
+  local dice = flr(power / 2)
+  local roll = 0
+  for i = 1, dice do
+    roll += flr(rnd(3))
+  end
+  return flr(base + roll)
 end
 
 function collapse_column(enemies)
@@ -356,6 +386,7 @@ function execute_effect(battle)
     local amount = roll_dice(power)
 
     target.hp = max(target.hp - amount, 0)
+    target.sleep = false
 
     add(effects, { type = "flash", target = target, color = 8 }, 1)
     add(effects, { type = "message", target = target, text = tostring(amount), color = 7 }, 2)
@@ -442,6 +473,30 @@ function execute_effect(battle)
 
     add(effects, { type = "flash", target = target, color = 11 }, 1)
     add(effects, { type = "message", target = target, text = tostring(amount), color = 7 }, 2)
+    return
+  end
+
+  if effect.type == "spawn_enemy" then
+    local position_map = {}
+    for e in all(battle.enemies) do
+      position_map[e.position] = e
+    end
+
+    local first_unoccupied = nil
+    for pos = 1, 9 do
+      if position_map[pos] == nil then
+        first_unoccupied = pos
+        break
+      end
+    end
+
+    for position = 1, first_unoccupied - 1 do
+      position_map[position].position += 1
+    end
+
+    local enemy = spawn_enemy(battle.spawn_dict[effect.enemy_type], 1)
+    add(battle.enemies, enemy, 1)
+    add(battle.queue, enemy)
     return
   end
 end

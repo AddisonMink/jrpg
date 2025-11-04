@@ -1,3 +1,17 @@
+OVERVIEW
+
+* Field (3 battles) - goblin, hobgoblin, zombie, wolf, bat
+* Forest (3 battles) - wolf, werewolf, witch, ghoul, zombie
+* Dungeon (3 battles) - ghost, ghoul, witch, oni, mindflayer
+* Boss (1 battle) - dragon
+
+FIELD GOALS
+- shout animation for hobgoblin and wolf
+- hobgoblin
+- wolf
+- bat
+- sequence of 3 battles
+
 BASIC BATTLE STUFF
 - victory poses (drawing + programming)
 - death sprite for players (drawing + programming)
@@ -5,6 +19,7 @@ BASIC BATTLE STUFF
 - music (import + programming)
 
 ADVANCED BATTLE STUFF
+- battle formulas
 - thief class (including steal skill) (drawing + programming)
 - basic items (potion, remedy) (drawing + programming)
 - witch enemy (id 230) (programming)
@@ -16,8 +31,6 @@ ADVANCED BATTLE STUFF
 - ghoul enemy (id 226) (drawing + programming) (includes paralysis)
 - mindflayer enemy (id 228) (programming + design)
 - oni enemy (id 204) (programming + design)
-
-
 
 DONE
 - death animation where sprite is blacked out

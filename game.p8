@@ -14,15 +14,16 @@ function _init()
   local players = {
     warrior_new("vlad"),
     elf_new("lena"),
-    --wizard_new("merl")
-    priestess_new("aria")
+    wizard_new("merl")
+    --priestess_new("aria")
   }
 
   local enemies = {
-    goblin_new(),
-    goblin_new(),
-    goblin_new(),
-    zombie_new()
+    "goblin",
+    "goblin",
+    "goblin",
+    "goblin",
+    "hobgoblin"
   }
 
   battle = load_battle(players, enemies)

@@ -9,7 +9,7 @@ SPELL_FIRE = {
   range = "single",
   effects = {
     { type = "animation", id = ANIMATION_FIRE_ID },
-    { type = "damage", power = 3 }
+    { type = "damage", power = 15 }
   }
 }
 
